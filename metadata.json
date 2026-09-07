@@ -1,0 +1,6 @@
+{
+  "name": "Gplay App Store",
+  "description": "A responsive Android APK app marketplace with Supabase storage, real downloads, and admin console.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
