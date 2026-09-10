@@ -15,13 +15,17 @@ import {
   Edit,
   Lock,
   QrCode,
-  X
+  X,
+  Link2,
+  Copy
 } from 'lucide-react';
 import { useAppStore } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { ScreenshotGallery } from '../components/store/ScreenshotGallery';
 import { ReviewSection } from '../components/store/ReviewSection';
 import { generateQrDataUrl } from '../lib/qrCode';
+import { getAppUrls } from '../lib/routing';
+import { INITIAL_APPS } from '../lib/initialData';
 
 interface AppDetailsPageProps {
   onOpenAuth: (mode?: 'signin' | 'signup') => void;
@@ -44,15 +48,36 @@ export const AppDetailsPage: React.FC<AppDetailsPageProps> = ({ onOpenAuth }) =>
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
-  // Find app by slug or fallback to id
-  const app = apps.find(a => a.slug === currentSlug || a.id === currentSlug);
+  // Find app by slug, id, or alias (with INITIAL_APPS fallback)
+  const app = apps.find(a => {
+    if (!currentSlug) return false;
+    const target = currentSlug.toLowerCase().trim();
+    const s = (a.slug || '').toLowerCase().trim();
+    const id = (a.id || '').toLowerCase().trim();
+    const name = (a.name || '').toLowerCase().trim();
+    if (s === target || id === target || name === target) return true;
+    if (target.includes('motoride') && (s.includes('motoride') || name.includes('motoride'))) return true;
+    if ((target === 'omniride-rider' || target === 'omniride') && (s === 'motoride' || s === 'omniride-rider')) return true;
+    return false;
+  }) || INITIAL_APPS.find(a => {
+    if (!currentSlug) return false;
+    const target = currentSlug.toLowerCase().trim();
+    const s = (a.slug || '').toLowerCase().trim();
+    const name = (a.name || '').toLowerCase().trim();
+    return s === target || name === target || (target.includes('motoride') && (s.includes('motoride') || name.includes('motoride')));
+  });
+
+  const urls = app ? getAppUrls(app.slug) : null;
+  // If host is vercel.app or custom domain, format canonical production link
+  const cleanAppUrl = urls ? urls.cleanUrl : '';
+  const directPathAppUrl = urls ? urls.directPathUrl : '';
 
   useEffect(() => {
     if (app && showQrModal) {
-      const targetUrl = app.apk_url || `${window.location.origin}/#/app/${app.slug}`;
+      const targetUrl = cleanAppUrl || app.apk_url || `${window.location.origin}/app/${app.slug}`;
       generateQrDataUrl(targetUrl).then(url => setQrDataUrl(url));
     }
-  }, [app, showQrModal]);
+  }, [app, showQrModal, cleanAppUrl]);
 
   if (!app) {
     return (
@@ -76,10 +101,10 @@ export const AppDetailsPage: React.FC<AppDetailsPageProps> = ({ onOpenAuth }) =>
   // App specific reviews
   const appReviews = reviews.filter(r => r.app_id === app.id);
 
-  const handleShare = () => {
-    const url = `${window.location.origin}/#/app/${app.slug}`;
+  const handleShare = (targetUrl?: string) => {
+    const urlToCopy = targetUrl || cleanAppUrl || `${window.location.origin}/app/${app.slug}`;
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(url);
+      navigator.clipboard.writeText(urlToCopy);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 3000);
     }
@@ -258,6 +283,76 @@ export const AppDetailsPage: React.FC<AppDetailsPageProps> = ({ onOpenAuth }) =>
           </p>
         </div>
       </div>
+
+      {/* Direct App Web Link Card */}
+      <section className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-emerald-500/10 via-zinc-900/5 to-transparent dark:from-emerald-950/30 dark:via-zinc-900/40 border border-emerald-500/30 dark:border-emerald-500/20 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
+              <Link2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+                Direct Web Link for {app.name}
+              </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Share this direct URL to open {app.name} instantly in any browser
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleShare(cleanAppUrl)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm active:scale-95"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-4 h-4 text-white" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  <span>Copy Web Link</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => setShowQrModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+            >
+              <QrCode className="w-4 h-4 text-emerald-500" />
+              <span>QR Code</span>
+            </button>
+          </div>
+        </div>
+
+        {/* URL Box */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+          <div className="flex-1 px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-800 font-mono text-xs text-emerald-700 dark:text-emerald-400 select-all overflow-x-auto whitespace-nowrap">
+            {cleanAppUrl}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400 shrink-0">
+            <span className="hidden md:inline">Also supports:</span>
+            <button
+              onClick={() => handleShare(directPathAppUrl)}
+              className="px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-mono text-[10px] transition-colors"
+              title="Click to copy full path link"
+            >
+              /app/{app.slug}
+            </button>
+            <button
+              onClick={() => handleShare(urls?.hashUrl)}
+              className="px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-mono text-[10px] transition-colors"
+              title="Click to copy hash link"
+            >
+              /#/app/{app.slug}
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* Screenshots Gallery Section */}
       {app.screenshots && app.screenshots.length > 0 && (

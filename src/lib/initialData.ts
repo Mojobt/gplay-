@@ -33,17 +33,17 @@ export const AVAILABLE_PERMISSIONS: { id: string; name: string; description: str
 export const INITIAL_APPS: AppItem[] = [
   {
     id: 'f1a90c1f-2e3d-4c5b-6a78-901234567801',
-    name: 'OmniRide Rider',
-    slug: 'omniride-rider',
-    developer_name: 'Omni Mobility Labs',
-    package_name: 'com.omniride.rider',
-    description: 'Fast, safe and on-demand taxi and rideshare booking with real-time GPS fleet tracking, automated fare calculation, and secure cashless payments.',
-    whats_new: 'Enhanced real-time driver ETA precision and smoother map animations.',
+    name: 'Motoride',
+    slug: 'motoride',
+    developer_name: 'Motoride Mobility & Logistics',
+    package_name: 'com.motoride.app',
+    description: 'Fast, safe and on-demand taxi, rideshare and courier delivery booking with real-time GPS fleet tracking, automated fare calculation, and secure cashless payments.',
+    whats_new: 'Enhanced real-time driver & courier ETA precision, smoother map animations, and optimized offline routing.',
     category: 'Transportation',
     version_name: '3.4.2',
     version_code: 34,
     minimum_android_version: 'Android 8.0 (API 26)',
-    apk_storage_path: 'omniride-rider-v3.4.2.apk',
+    apk_storage_path: 'motoride-v3.4.2.apk',
     apk_url: '',
     icon_storage_path: '',
     icon_url: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=200&auto=format&fit=crop&q=80',
@@ -58,7 +58,7 @@ export const INITIAL_APPS: AppItem[] = [
     created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
     updated_at: new Date().toISOString(),
     screenshots: [
-      'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=800&auto=format&fit=crop&q=80',
+      'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=800&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&auto=format&fit=crop&q=80',
       'https://images.unsplash.com/photo-1508962914676-134849a727f0?w=800&auto=format&fit=crop&q=80'
     ]

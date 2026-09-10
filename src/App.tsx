@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useAppStore } from './context/AppContext';
+import { parseAppUrl } from './lib/routing';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { BottomNav } from './components/layout/BottomNav';
@@ -43,37 +44,35 @@ const AppContent: React.FC = () => {
     setIsAuthOpen(true);
   };
 
-  // Hash based URL routing synchronization
+  // URL routing synchronization (supports pathnames, hashes, and query params)
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#/', '').replace('#', '');
-      if (!hash || hash === '') {
-        setCurrentView('home');
-      } else if (hash === 'search') {
-        setCurrentView('search');
-      } else if (hash === 'categories') {
-        setCurrentView('categories');
-      } else if (hash.startsWith('app/')) {
-        const slug = hash.replace('app/', '');
-        navigateToApp(slug);
-      } else if (hash.startsWith('admin')) {
-        setCurrentView('admin');
-      } else if (hash === 'downloads') {
-        setCurrentView('downloads');
+    const handleUrlSync = () => {
+      const route = parseAppUrl();
+      if (route.view === 'app-details' && route.slug) {
+        navigateToApp(route.slug);
+      } else if (route.view !== 'app-details') {
+        setCurrentView(route.view);
       }
     };
 
-    // Initial check
-    handleHashChange();
+    // Initial check on mount
+    handleUrlSync();
 
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleUrlSync);
+    window.addEventListener('popstate', handleUrlSync);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlSync);
+      window.removeEventListener('popstate', handleUrlSync);
+    };
   }, [setCurrentView, navigateToApp]);
 
   // Sync state back to hash when currentView changes
   useEffect(() => {
-    if (currentView === 'home' && window.location.hash !== '' && window.location.hash !== '#/') {
-      window.location.hash = '#/';
+    if (currentView === 'home') {
+      const p = window.location.pathname.replace(/^\/+|\/+$/g, '');
+      if (p === '' && window.location.hash !== '' && window.location.hash !== '#/') {
+        window.location.hash = '#/';
+      }
     } else if (currentView === 'search' && window.location.hash !== '#/search') {
       window.location.hash = '#/search';
     } else if (currentView === 'categories' && window.location.hash !== '#/categories') {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { AppItem, AppCategory, AppReview, AdminStats, LocalDownloadedApp } from '../types';
 import { INITIAL_APPS, INITIAL_REVIEWS } from '../lib/initialData';
+import { parseAppUrl } from '../lib/routing';
 import { 
   getSupabase, 
   getSupabaseConfig, 
@@ -78,7 +79,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, profile, setLoginRequiredModal } = useAuth();
-  const [apps, setApps] = useState<AppItem[]>([]);
+  const [apps, setApps] = useState<AppItem[]>(INITIAL_APPS);
   const [isLoadingApps, setIsLoadingApps] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<AppCategory | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,35 +155,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [isDark]);
 
-  // Handle URL hash changes for deep linking (e.g. #/app/motoride-rider, #/admin)
+  // Handle URL changes (pathnames, hashes, query parameters)
   useEffect(() => {
-    const handleHash = () => {
-      const hash = window.location.hash;
-      if (hash.startsWith('#/app/')) {
-        const slug = hash.replace('#/app/', '').trim();
-        if (slug) {
-          setCurrentSlug(slug);
-          setCurrentView('app-details');
-        }
-      } else if (hash.startsWith('#/admin')) {
-        setCurrentView('admin');
-      } else if (hash.startsWith('#/categories')) {
-        setCurrentView('categories');
-      } else if (hash.startsWith('#/search')) {
-        setCurrentView('search');
-      } else if (hash.startsWith('#/downloads')) {
-        setCurrentView('downloads');
+    const handleUrlChange = () => {
+      const route = parseAppUrl();
+      if (route.view === 'app-details' && route.slug) {
+        setCurrentSlug(route.slug);
+        setCurrentView('app-details');
+      } else {
+        setCurrentView(route.view);
       }
     };
 
-    handleHash();
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
+    handleUrlChange();
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
   }, []);
 
   const navigateToApp = (slug: string) => {
     setCurrentSlug(slug);
     setCurrentView('app-details');
+    try {
+      if (window.history && window.history.pushState) {
+        window.history.pushState({ slug }, '', `/app/${slug}`);
+      }
+    } catch {}
     window.location.hash = `#/app/${slug}`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -296,7 +297,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          localCustomApps = parsed.map(a => (!isUUID(a.id) ? { ...a, id: generateUUID() } : a));
+          localCustomApps = parsed.map(a => {
+            const item = !isUUID(a.id) ? { ...a, id: generateUUID() } : a;
+            if (item.slug === 'omniride-rider' || item.id === 'f1a90c1f-2e3d-4c5b-6a78-901234567801') {
+              return {
+                ...item,
+                name: 'Motoride',
+                slug: 'motoride',
+                developer_name: 'Motoride Mobility & Logistics'
+              };
+            }
+            return item;
+          });
         }
       } catch {}
     }
