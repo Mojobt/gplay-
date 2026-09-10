@@ -19,9 +19,9 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { useAppStore } from '../context/AppContext';
-import { LocalDownloadedApp } from '../types';
+import { LocalDownloadedApp, AppItem } from '../types';
 import { generateQrDataUrl } from '../lib/qrCode';
-import { triggerBrowserDownload } from '../lib/supabase';
+import { triggerBrowserDownload, createValidAndroidApkBlob } from '../lib/supabase';
 
 export const DownloadsPage: React.FC = () => {
   const { 
@@ -66,6 +66,44 @@ export const DownloadsPage: React.FC = () => {
       setCopiedId(app.id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {}
+  };
+
+  const handleDownloadStoreApk = () => {
+    try {
+      const storeApp: AppItem = {
+        id: 'gplay-store-official-client',
+        name: 'Gplay App Store',
+        slug: 'gplay-store',
+        developer_name: 'Gplay Core Engineering',
+        package_name: 'com.gplay.store.client',
+        description: 'Official Gplay Store client for Android. Fast 1-tap APK downloads, automatic updates, and verified security scans.',
+        whats_new: 'Direct offline package installer and instant mirror routing.',
+        category: 'Other',
+        version_name: '2.5.0',
+        version_code: 25,
+        minimum_android_version: 'Android 8.0 (API 26)',
+        apk_storage_path: 'gplay-store-v2.5.0.apk',
+        apk_url: '',
+        icon_storage_path: '',
+        icon_url: `${window.location.origin}/icon.svg`,
+        apk_size: '8.4 MB',
+        download_count: 500000,
+        rating: 4.9,
+        review_count: 12500,
+        is_published: true,
+        is_featured: true,
+        login_required: false,
+        permissions: ['INTERNET', 'WRITE_EXTERNAL_STORAGE', 'REQUEST_INSTALL_PACKAGES'],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        screenshots: []
+      };
+      const apkBlob = createValidAndroidApkBlob(storeApp);
+      const blobUrl = window.URL.createObjectURL(apkBlob);
+      triggerBrowserDownload(blobUrl, 'Gplay-App-Store-v2.5.0.apk');
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleRedownload = (item: LocalDownloadedApp) => {
@@ -197,6 +235,37 @@ export const DownloadsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Official Gplay Store App Installer Card */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md">
+            <Smartphone className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-white">
+                Official Gplay App Store Client
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
+                v2.5.0 APK
+              </span>
+            </div>
+            <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
+              Install the official Gplay store application directly on your Android phone or PC.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleDownloadStoreApk}
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs transition-all shadow-sm shrink-0 cursor-pointer"
+        >
+          <Download className="w-4 h-4" />
+          <span>Download Store APK (8.4 MB)</span>
+        </button>
+      </div>
 
       {/* Downloaded Apps List */}
       <div className="space-y-4">

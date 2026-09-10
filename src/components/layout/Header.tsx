@@ -18,9 +18,10 @@ import { useAuth } from '../../context/AuthContext';
 interface HeaderProps {
   onOpenAuth: (mode?: 'signin' | 'signup') => void;
   onOpenProfile: () => void;
+  onOpenInstallModal?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenProfile }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenProfile, onOpenInstallModal }) => {
   const { 
     currentView, 
     setCurrentView, 
@@ -195,6 +196,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenProfile }) => 
                 {isSupabaseConnected ? 'Supabase DB' : 'Config Supabase'}
               </span>
             </div>
+
+            {/* Install / Download App Button */}
+            {onOpenInstallModal && (
+              <button
+                id="header-install-app-btn"
+                onClick={onOpenInstallModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+                title="Download / Install Gplay App Store"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="hidden sm:inline">Download App</span>
+                <span className="sm:hidden">App</span>
+              </button>
+            )}
 
             {/* Theme Toggle */}
             <button

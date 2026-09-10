@@ -9,6 +9,8 @@ import { AuthModal } from './components/auth/AuthModal';
 import { ProfileModal } from './components/auth/ProfileModal';
 import { SchemaSetupBanner } from './components/common/SchemaSetupBanner';
 import { SqlSchemaModal } from './components/common/SqlSchemaModal';
+import { InstallAppModal } from './components/store/InstallAppModal';
+import { InstallBanner } from './components/store/InstallBanner';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { CategoriesPage } from './pages/CategoriesPage';
@@ -23,6 +25,18 @@ const AppContent: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  // Listen for native browser PWA beforeinstallprompt (Chrome Android and Desktop)
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
 
   const handleOpenAuth = (mode: 'signin' | 'signup' = 'signin') => {
     setAuthMode(mode);
@@ -74,10 +88,14 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-zinc-100/70 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors selection:bg-emerald-500 selection:text-white">
       
+      {/* Mobile Prominent Install / Download App Banner */}
+      <InstallBanner onOpenInstallModal={() => setIsInstallModalOpen(true)} />
+
       {/* Top Navigation Bar */}
       <Header
         onOpenAuth={handleOpenAuth}
         onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenInstallModal={() => setIsInstallModalOpen(true)}
       />
 
       {/* Database Schema Setup Alert Banner (if table public.apps is missing) */}
@@ -104,6 +122,14 @@ const AppContent: React.FC = () => {
       <BottomNav 
         onOpenAuth={handleOpenAuth}
         onOpenProfile={() => setIsProfileOpen(true)}
+      />
+
+      {/* Gplay Store App Install & APK Download Modal */}
+      <InstallAppModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+        deferredPrompt={deferredPrompt}
+        onInstallPrompted={() => setDeferredPrompt(null)}
       />
 
       {/* Download Flow Modal */}

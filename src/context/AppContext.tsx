@@ -284,42 +284,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // Load from local storage, purging any legacy mock apps
+    // Fallback: load INITIAL_APPS and merge with any locally added/edited apps
     const stored = localStorage.getItem('gplay_local_apps');
+    let localCustomApps: AppItem[] = [];
     if (stored) {
       try {
-        const parsed: AppItem[] = JSON.parse(stored);
-        const cleanApps = Array.isArray(parsed) 
-          ? parsed
-              .filter(a => 
-                !a.id.startsWith('1a90c1f2-') && 
-                !a.id.startsWith('2b81d2e3-') && 
-                !a.id.startsWith('3c72e3f4-') && 
-                !a.id.startsWith('4d63e4f5-') && 
-                !a.id.startsWith('5e54e5f6-') && 
-                !a.id.startsWith('6f45e6f7-') && 
-                !a.id.startsWith('7a36e7f8-') && 
-                !a.id.startsWith('8b27e8f9-') &&
-                a.name !== 'Motoride Rider' &&
-                a.name !== 'Nova Markdown Notes' &&
-                a.name !== 'Apex Drift Racer 2026'
-              )
-              .map(a => {
-                // Ensure every locally stored app has a valid UUID
-                if (!isUUID(a.id)) {
-                  return { ...a, id: generateUUID() };
-                }
-                return a;
-              })
-          : [];
-        localStorage.setItem('gplay_local_apps', JSON.stringify(cleanApps));
-        setApps(cleanApps);
-      } catch {
-        setApps([]);
-      }
-    } else {
-      setApps([]);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          localCustomApps = parsed.map(a => (!isUUID(a.id) ? { ...a, id: generateUUID() } : a));
+        }
+      } catch {}
     }
+
+    // Combine local custom apps and INITIAL_APPS ensuring no duplicate IDs or slugs
+    const combinedMap = new Map<string, AppItem>();
+    INITIAL_APPS.forEach(app => combinedMap.set(app.id, app));
+    localCustomApps.forEach(app => combinedMap.set(app.id, app));
+    const finalApps = Array.from(combinedMap.values());
+
+    setApps(finalApps);
     setIsLoadingApps(false);
   }, []);
 

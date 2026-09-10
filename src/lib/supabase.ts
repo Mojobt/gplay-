@@ -449,12 +449,25 @@ export const triggerBrowserDownload = (url: string, filename: string) => {
   try {
     const a = document.createElement('a');
     a.href = url;
-    a.setAttribute('download', safeFilename);
-    a.setAttribute('target', '_blank');
+    a.download = safeFilename;
+    // CRITICAL: Do NOT set target="_blank" for blob: or data: URLs
+    // In Chrome desktop and Chrome Android, setting target="_blank" on blob downloads
+    // causes Chrome to open an empty tab and cancel or block the file download!
+    if (!url.startsWith('blob:') && !url.startsWith('data:')) {
+      a.target = '_blank';
+    }
     a.rel = 'noopener noreferrer';
     a.style.display = 'none';
     document.body.appendChild(a);
-    a.click();
+    
+    // Dispatch native click
+    if (typeof a.click === 'function') {
+      a.click();
+    } else {
+      const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+      a.dispatchEvent(evt);
+    }
+
     setTimeout(() => {
       if (document.body.contains(a)) {
         document.body.removeChild(a);
@@ -462,6 +475,10 @@ export const triggerBrowserDownload = (url: string, filename: string) => {
     }, 2000);
   } catch (err) {
     console.warn('Direct browser download execution error:', err);
+    // Fallback: direct window navigation if anchor click fails
+    try {
+      window.location.href = url;
+    } catch {}
   }
 };
 
