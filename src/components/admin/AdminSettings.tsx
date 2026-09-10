@@ -23,7 +23,7 @@ import {
   normalizeSupabaseUrl,
   normalizeAnonKey
 } from '../../lib/supabase';
-import { SUPABASE_SQL_SCHEMA } from '../../lib/sqlSchema';
+import { SUPABASE_SQL_SCHEMA, SUPABASE_RLS_FIX_SQL } from '../../lib/sqlSchema';
 
 export const AdminSettings: React.FC = () => {
   const { isSupabaseConnected, checkSupabaseConnection, refreshApps } = useAppStore();
@@ -33,9 +33,10 @@ export const AdminSettings: React.FC = () => {
   const [anonKey, setAnonKey] = useState(config.anonKey || '');
   const [showAnonKey, setShowAnonKey] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; rlsBlocked?: boolean } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [selectedSqlTab, setSelectedSqlTab] = useState<'rls' | 'schema'>('rls');
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
@@ -75,8 +76,10 @@ export const AdminSettings: React.FC = () => {
     }
   };
 
+  const currentSql = selectedSqlTab === 'rls' ? SUPABASE_RLS_FIX_SQL : SUPABASE_SQL_SCHEMA;
+
   const handleCopySql = () => {
-    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+    navigator.clipboard.writeText(currentSql);
     setCopiedSql(true);
     setTimeout(() => setCopiedSql(false), 3000);
   };
@@ -258,22 +261,26 @@ export const AdminSettings: React.FC = () => {
         )}
       </div>
 
-      {/* Complete SQL Schema Viewer with Copy Button */}
+      {/* SQL Script Viewer with Tab Toggle */}
       <div className="p-6 rounded-3xl bg-zinc-900 text-zinc-200 border border-zinc-800 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h4 className="font-bold text-sm text-white flex items-center gap-2">
               <Database className="w-4 h-4 text-emerald-400" />
-              Supabase SQL Schema & Policies (1-Click Copy)
+              <span>Supabase SQL Scripts & Permissions</span>
             </h4>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Run this in your Supabase Dashboard: SQL Editor &rarr; New query &rarr; Run
+              Execute in your Supabase Dashboard: SQL Editor &rarr; New query &rarr; Run
             </p>
           </div>
 
           <button
             onClick={handleCopySql}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white transition-colors shadow-sm self-start sm:self-auto ${
+              selectedSqlTab === 'rls'
+                ? 'bg-amber-600 hover:bg-amber-500'
+                : 'bg-emerald-600 hover:bg-emerald-500'
+            }`}
           >
             {copiedSql ? (
               <>
@@ -281,15 +288,45 @@ export const AdminSettings: React.FC = () => {
               </>
             ) : (
               <>
-                <Copy className="w-3.5 h-3.5" /> Copy SQL
+                <Copy className="w-3.5 h-3.5" /> Copy {selectedSqlTab === 'rls' ? 'RLS Fix SQL' : 'Full Schema'}
               </>
             )}
           </button>
         </div>
 
+        {/* Tab switch */}
+        <div className="flex items-center gap-2 border-b border-zinc-800 pt-1">
+          <button
+            onClick={() => {
+              setSelectedSqlTab('rls');
+              setCopiedSql(false);
+            }}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg transition-colors flex items-center gap-1.5 ${
+              selectedSqlTab === 'rls'
+                ? 'bg-amber-500/20 text-amber-300 border-b-2 border-amber-500'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <span>⚡ Quick RLS Policy Fix (fix_rls.sql)</span>
+          </button>
+          <button
+            onClick={() => {
+              setSelectedSqlTab('schema');
+              setCopiedSql(false);
+            }}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-t-lg transition-colors flex items-center gap-1.5 ${
+              selectedSqlTab === 'schema'
+                ? 'bg-emerald-500/20 text-emerald-300 border-b-2 border-emerald-500'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <span>📦 Full Database & Storage Schema (schema.sql)</span>
+          </button>
+        </div>
+
         <div className="relative">
           <pre className="p-4 rounded-2xl bg-black/60 font-mono text-[11px] max-h-80 overflow-y-auto text-emerald-400/90 leading-relaxed scrollbar-thin">
-            {SUPABASE_SQL_SCHEMA}
+            {currentSql}
           </pre>
         </div>
       </div>

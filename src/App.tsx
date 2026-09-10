@@ -7,11 +7,14 @@ import { BottomNav } from './components/layout/BottomNav';
 import { DownloadModal } from './components/store/DownloadModal';
 import { AuthModal } from './components/auth/AuthModal';
 import { ProfileModal } from './components/auth/ProfileModal';
+import { SchemaSetupBanner } from './components/common/SchemaSetupBanner';
+import { SqlSchemaModal } from './components/common/SqlSchemaModal';
 import { HomePage } from './pages/HomePage';
 import { SearchPage } from './pages/SearchPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { AppDetailsPage } from './pages/AppDetailsPage';
 import { AdminPage } from './pages/AdminPage';
+import { DownloadsPage } from './pages/DownloadsPage';
 
 const AppContent: React.FC = () => {
   const { currentView, setCurrentView, navigateToApp, activeDownloadApp, isSupabaseConnected } = useAppStore();
@@ -41,6 +44,8 @@ const AppContent: React.FC = () => {
         navigateToApp(slug);
       } else if (hash.startsWith('admin')) {
         setCurrentView('admin');
+      } else if (hash === 'downloads') {
+        setCurrentView('downloads');
       }
     };
 
@@ -61,6 +66,8 @@ const AppContent: React.FC = () => {
       window.location.hash = '#/categories';
     } else if (currentView === 'admin' && !window.location.hash.startsWith('#/admin')) {
       window.location.hash = '#/admin';
+    } else if (currentView === 'downloads' && window.location.hash !== '#/downloads') {
+      window.location.hash = '#/downloads';
     }
   }, [currentView]);
 
@@ -73,11 +80,15 @@ const AppContent: React.FC = () => {
         onOpenProfile={() => setIsProfileOpen(true)}
       />
 
+      {/* Database Schema Setup Alert Banner (if table public.apps is missing) */}
+      <SchemaSetupBanner />
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {currentView === 'home' && <HomePage />}
         {currentView === 'search' && <SearchPage />}
         {currentView === 'categories' && <CategoriesPage />}
+        {currentView === 'downloads' && <DownloadsPage />}
         {currentView === 'app-details' && (
           <AppDetailsPage onOpenAuth={handleOpenAuth} />
         )}
@@ -110,6 +121,9 @@ const AppContent: React.FC = () => {
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
       />
+
+      {/* Supabase SQL Schema Viewer / Setup Modal */}
+      <SqlSchemaModal />
 
     </div>
   );

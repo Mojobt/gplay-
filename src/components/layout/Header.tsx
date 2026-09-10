@@ -28,7 +28,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenProfile }) => 
     setSearchQuery, 
     isDark, 
     toggleTheme, 
-    isSupabaseConnected 
+    isSupabaseConnected,
+    downloadedApps 
   } = useAppStore();
 
   const { user, profile, isAdmin, signOut, toggleAdminDevRole } = useAuth();
@@ -116,6 +117,26 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenProfile }) => 
               }`}
             >
               Search
+            </button>
+            <button
+              id="nav-downloads-btn"
+              onClick={() => {
+                setCurrentView('downloads');
+                window.location.hash = '#/downloads';
+              }}
+              className={`relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                currentView === 'downloads'
+                  ? 'bg-zinc-100 dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400'
+                  : 'text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              }`}
+            >
+              <Download className="w-4 h-4" />
+              <span>Downloads</span>
+              {downloadedApps.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white leading-none">
+                  {downloadedApps.length}
+                </span>
+              )}
             </button>
 
             {/* Admin Console Link */}

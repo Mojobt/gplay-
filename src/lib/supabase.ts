@@ -186,8 +186,72 @@ export const resetSupabaseClient = () => {
   supabaseInstance = null;
 };
 
+/**
+ * Validates if a string is a standard UUID format
+ */
+export const isUUID = (val?: string | null): boolean => {
+  if (!val || typeof val !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
+};
+
+/**
+ * Generates a valid UUID v4 string
+ */
+export const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // Fallback
+    }
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+/**
+ * Extracts the Supabase project reference ID from the URL (e.g. abcdefghijklm from https://abcdefghijklm.supabase.co)
+ */
+export const getSupabaseProjectRef = (rawUrl?: string): string | null => {
+  const { url } = getSupabaseConfig();
+  const targetUrl = rawUrl || url;
+  if (!targetUrl) return null;
+  const match = targetUrl.match(/https?:\/\/([a-z0-9-]+)\.supabase\.(?:co|in)/i);
+  return match ? match[1] : null;
+};
+
+/**
+ * Generates the direct URL to the Supabase SQL Editor for the current project
+ */
+export const getSupabaseSqlEditorUrl = (rawUrl?: string): string => {
+  const ref = getSupabaseProjectRef(rawUrl);
+  if (ref) {
+    return `https://supabase.com/dashboard/project/${ref}/sql/new`;
+  }
+  return 'https://supabase.com/dashboard';
+};
+
+/**
+ * Detects if an error is caused by PostgreSQL Row-Level Security (RLS) violation
+ */
+export const isRlsPolicyError = (error: any): boolean => {
+  if (!error) return false;
+  const msg = (error.message || (typeof error === 'string' ? error : '')).toLowerCase();
+  const code = error.code || '';
+  return (
+    code === '42501' ||
+    msg.includes('row-level security policy') ||
+    msg.includes('violates row-level security') ||
+    msg.includes('permission denied for table') ||
+    msg.includes('rls')
+  );
+};
+
 // Test Supabase connection
-export const testSupabaseConnection = async (): Promise<{ success: boolean; message: string; tableCount?: number }> => {
+export const testSupabaseConnection = async (): Promise<{ success: boolean; message: string; tableCount?: number; tableMissing?: boolean; rlsBlocked?: boolean }> => {
   const client = getSupabase();
   if (!client) {
     return { success: false, message: 'Supabase credentials are not configured or invalid.' };
@@ -196,17 +260,41 @@ export const testSupabaseConnection = async (): Promise<{ success: boolean; mess
   try {
     const { data, error } = await client.from('apps').select('count', { count: 'exact', head: true });
     if (error) {
-      // Check if table missing
-      if (error.code === '42P01' || error.message.includes('relation "apps" does not exist')) {
+      // Check if table missing (PGRST205, 42P01, schema cache, relation does not exist)
+      const isTableMissing = 
+        error.code === '42P01' || 
+        error.code === 'PGRST205' ||
+        error.message.includes('relation "apps" does not exist') ||
+        error.message.includes("Could not find the table 'public.apps'") ||
+        error.message.includes('schema cache');
+
+      if (isTableMissing) {
         return { 
           success: false, 
-          message: 'Connected to Supabase, but the "apps" table is not created yet. Please execute the SQL Schema from Settings.' 
+          tableMissing: true,
+          message: 'Connected to Supabase project, but the table "public.apps" does not exist in the database schema yet. Please copy and run the SQL schema in your Supabase SQL Editor.' 
         };
       }
+
+      if (isRlsPolicyError(error)) {
+        return {
+          success: false,
+          rlsBlocked: true,
+          message: 'Connected to Supabase, but Row-Level Security (RLS) on "public.apps" is blocking access. Run the quick RLS fix in your Supabase SQL Editor.'
+        };
+      }
+
       return { success: false, message: `Database error: ${error.message}` };
     }
     return { success: true, message: 'Successfully connected to Supabase database!', tableCount: data ? Number(data) : 0 };
   } catch (err: any) {
+    if (isRlsPolicyError(err)) {
+      return {
+        success: false,
+        rlsBlocked: true,
+        message: 'Row-Level Security (RLS) is blocking access to "public.apps". Run the RLS fix in Supabase SQL Editor.'
+      };
+    }
     return { success: false, message: err?.message || 'Connection failed.' };
   }
 };
@@ -252,8 +340,17 @@ export const uploadFileToStorage = async (
   };
 };
 
-// Download APK helper with real binary file delivery and resilient fallback
-export const downloadApkFile = async (app: AppItem): Promise<void> => {
+export interface ApkDownloadPayload {
+  url: string;
+  filename: string;
+  isBlob: boolean;
+  directPublicUrl?: string;
+  size: string;
+  blob?: Blob;
+}
+
+// Download APK helper with real binary file delivery, public CDN priority, and resilient fallback
+export const downloadApkFile = async (app: AppItem): Promise<ApkDownloadPayload> => {
   const client = getSupabase();
   const safeBaseName = app.slug || app.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
   const filename = `${safeBaseName}-v${app.version_name || '1.0.0'}.apk`;
@@ -265,34 +362,67 @@ export const downloadApkFile = async (app: AppItem): Promise<void> => {
   if (client && rawPath && !isSimulated) {
     const cleanPath = cleanStoragePath(rawPath, BUCKET_APKS);
     if (cleanPath) {
+      // Priority A: Determine direct public CDN URL from Supabase storage
+      let directPublicUrl: string | undefined;
+      try {
+        const pubData = client.storage.from(BUCKET_APKS).getPublicUrl(cleanPath);
+        if (pubData?.data?.publicUrl) {
+          directPublicUrl = pubData.data.publicUrl;
+        }
+      } catch (e) {
+        console.warn('Could not determine public URL for APK:', e);
+      }
+
+      // Priority B: Download real binary blob from Supabase storage
       try {
         const { data, error } = await client.storage.from(BUCKET_APKS).download(cleanPath);
         if (!error && data) {
           const blobUrl = window.URL.createObjectURL(data);
-          triggerDownload(blobUrl, filename);
-          return;
+          const effectiveUrl = directPublicUrl || blobUrl;
+          triggerBrowserDownload(effectiveUrl, filename);
+          return {
+            url: effectiveUrl,
+            filename,
+            isBlob: !directPublicUrl,
+            directPublicUrl,
+            size: app.apk_size,
+            blob: data,
+          };
         }
         if (error) {
-          console.warn('Storage bucket download reported error, checking fallback:', error.message);
+          console.warn('Storage bucket download reported error, checking direct public URL or fallback:', error.message);
         }
       } catch (e: any) {
         console.warn('Storage bucket direct download failed:', e);
       }
+
+      // If we have direct public URL but download API was blocked by RLS/CORS:
+      if (directPublicUrl) {
+        triggerBrowserDownload(directPublicUrl, filename);
+        return {
+          url: directPublicUrl,
+          filename,
+          isBlob: false,
+          directPublicUrl,
+          size: app.apk_size,
+        };
+      }
     }
   }
 
-  // 2. If app has direct APK URL
+  // 2. If app has direct APK URL (e.g. GitHub release, CDN link, or external host)
   if (app.apk_url && app.apk_url.startsWith('http')) {
     try {
-      const res = await fetch(app.apk_url);
-      if (res.ok) {
-        const blob = await res.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        triggerDownload(blobUrl, filename);
-        return;
-      }
+      triggerBrowserDownload(app.apk_url, filename);
+      return {
+        url: app.apk_url,
+        filename,
+        isBlob: false,
+        directPublicUrl: app.apk_url,
+        size: app.apk_size,
+      };
     } catch (e: any) {
-      console.warn('Direct APK URL fetch failed, falling back to authentic APK blob generator:', e);
+      console.warn('Direct APK URL download failed, falling back to authentic package generator:', e);
     }
   }
 
@@ -300,21 +430,39 @@ export const downloadApkFile = async (app: AppItem): Promise<void> => {
   try {
     const apkBlob = createValidAndroidApkBlob(app);
     const blobUrl = window.URL.createObjectURL(apkBlob);
-    triggerDownload(blobUrl, filename);
-    return;
+    triggerBrowserDownload(blobUrl, filename);
+    return {
+      url: blobUrl,
+      filename,
+      isBlob: true,
+      directPublicUrl: undefined,
+      size: app.apk_size,
+      blob: apkBlob,
+    };
   } catch (e: any) {
     throw new Error(`Unable to generate APK for "${app.name}": ${e?.message || 'Storage and download failure'}`);
   }
 };
 
-const triggerDownload = (url: string, filename: string) => {
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename.endsWith('.apk') ? filename : `${filename}.apk`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => window.URL.revokeObjectURL(url), 4000);
+export const triggerBrowserDownload = (url: string, filename: string) => {
+  const safeFilename = filename.endsWith('.apk') ? filename : `${filename}.apk`;
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', safeFilename);
+    a.setAttribute('target', '_blank');
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+    }, 2000);
+  } catch (err) {
+    console.warn('Direct browser download execution error:', err);
+  }
 };
 
 // Generate an authentic Android APK package (ZIP archive format)

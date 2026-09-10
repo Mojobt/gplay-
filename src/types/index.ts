@@ -74,6 +74,22 @@ export interface AppDownload {
   created_at: string;
 }
 
+export interface LocalDownloadedApp {
+  id: string;
+  app_id: string;
+  name: string;
+  slug: string;
+  developer_name: string;
+  package_name: string;
+  icon_url: string;
+  version_name: string;
+  apk_size: string;
+  downloaded_at: string;
+  filename: string;
+  direct_url?: string;
+  category: AppCategory;
+}
+
 export interface UserProfile {
   id: string;
   email: string;

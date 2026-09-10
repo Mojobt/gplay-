@@ -317,7 +317,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const client = getSupabase();
     if (client && user) {
-      client.from('profiles').update({ role: updatedRole }).eq('id', user.id).then();
+      client.from('profiles').upsert({
+        id: user.id,
+        email: user.email,
+        display_name: profile.display_name || user.email?.split('@')[0] || 'Admin',
+        role: updatedRole,
+      }, { onConflict: 'id' }).then();
     }
   };
 

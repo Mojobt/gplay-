@@ -1,7 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { AppItem, AppCategory, AppReview, AdminStats } from '../types';
+import { AppItem, AppCategory, AppReview, AdminStats, LocalDownloadedApp } from '../types';
 import { INITIAL_APPS, INITIAL_REVIEWS } from '../lib/initialData';
-import { getSupabase, getSupabaseConfig, downloadApkFile, BUCKET_APKS } from '../lib/supabase';
+import { 
+  getSupabase, 
+  getSupabaseConfig, 
+  downloadApkFile, 
+  BUCKET_APKS, 
+  isUUID, 
+  generateUUID,
+  isRlsPolicyError,
+  ApkDownloadPayload
+} from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
 interface AppContextType {
@@ -11,8 +20,8 @@ interface AppContextType {
   setSelectedCategory: (cat: AppCategory | 'All') => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
-  currentView: 'home' | 'categories' | 'search' | 'app-details' | 'admin';
-  setCurrentView: (view: 'home' | 'categories' | 'search' | 'app-details' | 'admin') => void;
+  currentView: 'home' | 'categories' | 'search' | 'app-details' | 'admin' | 'downloads';
+  setCurrentView: (view: 'home' | 'categories' | 'search' | 'app-details' | 'admin' | 'downloads') => void;
   currentSlug: string | null;
   setCurrentSlug: (slug: string | null) => void;
   adminTab: 'dashboard' | 'apps' | 'add-app' | 'upload-apk' | 'reviews' | 'storage' | 'settings';
@@ -34,6 +43,9 @@ interface AppContextType {
   downloadError: string | null;
   downloadSuccessApp: AppItem | null;
   setDownloadSuccessApp: (app: AppItem | null) => void;
+  downloadActivePayload: ApkDownloadPayload | null;
+  downloadedApps: LocalDownloadedApp[];
+  clearDownloadedApps: () => void;
   triggerAppDownload: (app: AppItem) => Promise<void>;
   
   // Reviews
@@ -41,13 +53,25 @@ interface AppContextType {
   deleteReview: (reviewId: string) => Promise<void>;
 
   // Admin App Operations
-  saveApp: (appData: Partial<AppItem>, isEditing?: boolean) => Promise<{ success: boolean; error?: string; app?: AppItem }>;
+  saveApp: (appData: Partial<AppItem>, isEditing?: boolean) => Promise<{ success: boolean; error?: string; app?: AppItem; isRlsError?: boolean }>;
   deleteApp: (appId: string) => Promise<{ success: boolean; error?: string }>;
   togglePublishApp: (appId: string) => Promise<void>;
   toggleFeatureApp: (appId: string) => Promise<void>;
   refreshApps: () => Promise<void>;
   syncFromSupabase: () => Promise<void>;
   navigateToApp: (slug: string) => void;
+
+  // Schema Diagnostic & RLS
+  isSchemaMissing: boolean;
+  isRlsBlocked: boolean;
+  setIsRlsBlocked: (blocked: boolean) => void;
+  schemaModalOpen: boolean;
+  setSchemaModalOpen: (open: boolean) => void;
+  schemaModalTab: 'schema' | 'rls';
+  setSchemaModalTab: (tab: 'schema' | 'rls') => void;
+  openSchemaModal: (tab?: 'schema' | 'rls') => void;
+  dismissSchemaBanner: boolean;
+  setDismissSchemaBanner: (dismiss: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -65,6 +89,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [reviews, setReviews] = useState<AppReview[]>(INITIAL_REVIEWS);
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
+  const [isSchemaMissing, setIsSchemaMissing] = useState(false);
+  const [isRlsBlocked, setIsRlsBlocked] = useState(false);
+  const [schemaModalOpen, setSchemaModalOpen] = useState(false);
+  const [schemaModalTab, setSchemaModalTab] = useState<'schema' | 'rls'>('rls');
+  const [dismissSchemaBanner, setDismissSchemaBanner] = useState(false);
+
+  const openSchemaModal = (tab: 'schema' | 'rls' = 'rls') => {
+    setSchemaModalTab(tab);
+    setSchemaModalOpen(true);
+  };
 
   // Theme state
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -80,6 +114,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadSuccessApp, setDownloadSuccessApp] = useState<AppItem | null>(null);
+  const [downloadActivePayload, setDownloadActivePayload] = useState<ApkDownloadPayload | null>(null);
+  const [downloadedApps, setDownloadedApps] = useState<LocalDownloadedApp[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('gplay_downloaded_apps');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const clearDownloadedApps = useCallback(() => {
+    localStorage.removeItem('gplay_downloaded_apps');
+    setDownloadedApps([]);
+  }, []);
 
   // Toggle theme
   const toggleTheme = () => {
@@ -119,6 +170,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentView('categories');
       } else if (hash.startsWith('#/search')) {
         setCurrentView('search');
+      } else if (hash.startsWith('#/downloads')) {
+        setCurrentView('downloads');
       }
     };
 
@@ -134,21 +187,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Helper to detect if an error is due to missing tables in Supabase schema
+  const isTableMissingError = (error: any): boolean => {
+    if (!error) return false;
+    const msg = (error.message || '').toLowerCase();
+    const code = error.code || '';
+    return (
+      code === 'PGRST205' ||
+      code === '42P01' ||
+      msg.includes("could not find the table 'public.apps'") ||
+      msg.includes("table 'public.apps' in the schema cache") ||
+      msg.includes('schema cache') ||
+      msg.includes('relation "apps" does not exist') ||
+      msg.includes('relation "public.apps" does not exist')
+    );
+  };
+
   // Check connection
   const checkSupabaseConnection = useCallback(async (): Promise<boolean> => {
     const { isConfigured } = getSupabaseConfig();
     const client = getSupabase();
     if (!isConfigured || !client) {
       setIsSupabaseConnected(false);
+      setIsSchemaMissing(false);
       return false;
     }
 
     try {
       const { error } = await client.from('apps').select('id').limit(1);
-      const connected = !error;
-      setIsSupabaseConnected(connected);
-      return connected;
-    } catch {
+      if (error) {
+        if (isTableMissingError(error)) {
+          setIsSchemaMissing(true);
+        } else {
+          setIsSchemaMissing(false);
+        }
+        setIsSupabaseConnected(false);
+        return false;
+      }
+      setIsSchemaMissing(false);
+      setIsSupabaseConnected(true);
+      return true;
+    } catch (e: any) {
+      if (isTableMissingError(e)) {
+        setIsSchemaMissing(true);
+      }
       setIsSupabaseConnected(false);
       return false;
     }
@@ -172,7 +254,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           `)
           .order('download_count', { ascending: false });
 
-        if (!error && data && data.length > 0) {
+        if (error) {
+          if (isTableMissingError(error)) {
+            setIsSchemaMissing(true);
+          }
+          console.warn('Could not fetch from Supabase apps table:', error.message);
+        } else if (data) {
+          setIsSchemaMissing(false);
+          setIsSupabaseConnected(true);
           const mappedApps: AppItem[] = data.map((item: any) => ({
             ...item,
             rating: Number(item.rating) || 0,
@@ -184,11 +273,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : [],
           }));
           setApps(mappedApps);
-          setIsSupabaseConnected(true);
           setIsLoadingApps(false);
           return;
         }
-      } catch (e) {
+      } catch (e: any) {
+        if (isTableMissingError(e)) {
+          setIsSchemaMissing(true);
+        }
         console.warn('Could not fetch from Supabase apps table:', e);
       }
     }
@@ -199,19 +290,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed: AppItem[] = JSON.parse(stored);
         const cleanApps = Array.isArray(parsed) 
-          ? parsed.filter(a => 
-              !a.id.startsWith('1a90c1f2-') && 
-              !a.id.startsWith('2b81d2e3-') && 
-              !a.id.startsWith('3c72e3f4-') && 
-              !a.id.startsWith('4d63e4f5-') && 
-              !a.id.startsWith('5e54e5f6-') && 
-              !a.id.startsWith('6f45e6f7-') && 
-              !a.id.startsWith('7a36e7f8-') && 
-              !a.id.startsWith('8b27e8f9-') &&
-              a.name !== 'Motoride Rider' &&
-              a.name !== 'Nova Markdown Notes' &&
-              a.name !== 'Apex Drift Racer 2026'
-            )
+          ? parsed
+              .filter(a => 
+                !a.id.startsWith('1a90c1f2-') && 
+                !a.id.startsWith('2b81d2e3-') && 
+                !a.id.startsWith('3c72e3f4-') && 
+                !a.id.startsWith('4d63e4f5-') && 
+                !a.id.startsWith('5e54e5f6-') && 
+                !a.id.startsWith('6f45e6f7-') && 
+                !a.id.startsWith('7a36e7f8-') && 
+                !a.id.startsWith('8b27e8f9-') &&
+                a.name !== 'Motoride Rider' &&
+                a.name !== 'Nova Markdown Notes' &&
+                a.name !== 'Apex Drift Racer 2026'
+              )
+              .map(a => {
+                // Ensure every locally stored app has a valid UUID
+                if (!isUUID(a.id)) {
+                  return { ...a, id: generateUUID() };
+                }
+                return a;
+              })
           : [];
         localStorage.setItem('gplay_local_apps', JSON.stringify(cleanApps));
         setApps(cleanApps);
@@ -250,7 +349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsLoadingReviews(true);
       const client = getSupabase();
 
-      if (client) {
+      if (client && isUUID(activeApp.id)) {
         try {
           const { data, error } = await client
             .from('app_reviews')
@@ -298,20 +397,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setIsDownloading(true);
-    setDownloadProgress(10);
+    setDownloadProgress(20);
 
     try {
-      // Simulate real verification steps
-      await new Promise(r => setTimeout(r, 400));
-      setDownloadProgress(45);
+      // Direct APK resolution and browser download dispatch
+      const payload = await downloadApkFile(app);
+      setDownloadProgress(75);
+      setDownloadActivePayload(payload);
+      setDownloadSuccessApp(app);
 
-      // Trigger download
-      await downloadApkFile(app);
-      setDownloadProgress(85);
+      // Record in local downloaded apps history
+      const newDownloaded: LocalDownloadedApp = {
+        id: generateUUID(),
+        app_id: app.id,
+        name: app.name,
+        slug: app.slug,
+        developer_name: app.developer_name,
+        package_name: app.package_name,
+        icon_url: app.icon_url,
+        version_name: app.version_name,
+        apk_size: app.apk_size,
+        downloaded_at: new Date().toISOString(),
+        filename: payload.filename,
+        direct_url: payload.directPublicUrl || payload.url,
+        category: app.category,
+      };
+
+      setDownloadedApps(prev => {
+        const filtered = prev.filter(d => d.app_id !== app.id);
+        const updated = [newDownloaded, ...filtered];
+        try {
+          localStorage.setItem('gplay_downloaded_apps', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
 
       // Increment download counter safely in Supabase
       const client = getSupabase();
-      if (client) {
+      if (client && isUUID(app.id)) {
         try {
           const { error: rpcError } = await client.rpc('increment_app_download', { app_id_param: app.id });
           if (rpcError) {
@@ -338,7 +461,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
 
       setDownloadProgress(100);
-      setDownloadSuccessApp(app);
     } catch (err: any) {
       console.error('Download error:', err);
       setDownloadError(err?.message || 'Download failed. Please check network connection or APK storage path.');
@@ -346,7 +468,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTimeout(() => {
         setIsDownloading(false);
         setDownloadProgress(0);
-      }, 700);
+      }, 500);
     }
   };
 
@@ -362,7 +484,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const userName = profile?.display_name || user.email?.split('@')[0] || 'Anonymous';
     const newReview: AppReview = {
-      id: 'rev-' + Math.random().toString(36).substr(2, 9),
+      id: generateUUID(),
       app_id: appId,
       user_id: user.id,
       user_name: userName,
@@ -373,18 +495,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const client = getSupabase();
-    if (client) {
+    if (client && isUUID(appId) && isUUID(user.id)) {
       try {
-        const { error } = await client.from('app_reviews').insert({
+        const { data, error } = await client.from('app_reviews').insert({
           app_id: appId,
           user_id: user.id,
           user_name: userName,
           rating,
           comment,
-        });
+        }).select().maybeSingle();
 
         if (error) {
           return { success: false, error: error.message };
+        }
+        if (data?.id) {
+          newReview.id = data.id;
         }
       } catch (e: any) {
         return { success: false, error: e?.message || 'Failed to submit review' };
@@ -417,7 +542,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Delete review
   const deleteReview = async (reviewId: string) => {
     const client = getSupabase();
-    if (client) {
+    if (client && isUUID(reviewId)) {
       try {
         await client.from('app_reviews').delete().eq('id', reviewId);
       } catch (e) {
@@ -431,7 +556,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const saveApp = async (
     appData: Partial<AppItem>,
     isEditing: boolean = false
-  ): Promise<{ success: boolean; error?: string; app?: AppItem }> => {
+  ): Promise<{ success: boolean; error?: string; app?: AppItem; isRlsError?: boolean }> => {
     const client = getSupabase();
     const timestamp = new Date().toISOString();
 
@@ -441,8 +566,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
+    const hasValidUuid = isUUID(appData.id);
+    const assignedId = hasValidUuid ? (appData.id as string) : generateUUID();
+
     const newOrUpdatedApp: AppItem = {
-      id: appData.id || ('app-' + Math.random().toString(36).substr(2, 9)),
+      id: assignedId,
       name: appData.name || 'Untitled App',
       slug: preparedSlug,
       developer_name: appData.developer_name || 'Independent Developer',
@@ -474,49 +602,127 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const { screenshots, ...dbFields } = newOrUpdatedApp;
         
-        if (isEditing && appData.id) {
+        let existingSupabaseId: string | null = null;
+        if (isEditing && hasValidUuid) {
+          existingSupabaseId = appData.id as string;
+        } else if (isEditing) {
+          // If the app was previously saved with a non-UUID ID, check if it exists in Supabase by package_name or slug
+          try {
+            const { data: matched } = await client
+              .from('apps')
+              .select('id')
+              .or(`package_name.eq.${newOrUpdatedApp.package_name},slug.eq.${newOrUpdatedApp.slug}`)
+              .maybeSingle();
+            if (matched?.id && isUUID(matched.id)) {
+              existingSupabaseId = matched.id;
+              newOrUpdatedApp.id = matched.id;
+            }
+          } catch {
+            // ignore lookup error
+          }
+        }
+
+        if (existingSupabaseId) {
+          const { id, created_at, ...updateFields } = dbFields;
           const { error } = await client
             .from('apps')
             .update({
-              ...dbFields,
+              ...updateFields,
               updated_at: timestamp,
             })
-            .eq('id', appData.id);
+            .eq('id', existingSupabaseId);
 
-          if (error) return { success: false, error: error.message };
+          if (error) {
+            if (isTableMissingError(error)) {
+              setIsSchemaMissing(true);
+              return { 
+                success: false, 
+                error: 'Cannot save: The "public.apps" table does not exist in your Supabase project yet. Please execute the SQL schema in your Supabase SQL Editor.' 
+              };
+            }
+            if (isRlsPolicyError(error)) {
+              setIsRlsBlocked(true);
+              return {
+                success: false,
+                error: 'new row violates row-level security policy for table "apps"',
+                isRlsError: true,
+              };
+            }
+            return { success: false, error: error.message };
+          }
         } else {
+          // New app insertion with genuine UUID
+          const insertPayload: any = {
+            ...dbFields,
+            id: assignedId,
+          };
+
           const { data, error } = await client
             .from('apps')
-            .insert([dbFields])
+            .insert([insertPayload])
             .select()
             .single();
 
-          if (error) return { success: false, error: error.message };
-          if (data) newOrUpdatedApp.id = data.id;
+          if (error) {
+            if (isTableMissingError(error)) {
+              setIsSchemaMissing(true);
+              return { 
+                success: false, 
+                error: 'Cannot save: The "public.apps" table does not exist in your Supabase project yet. Please execute the SQL schema in your Supabase SQL Editor.' 
+              };
+            }
+            if (isRlsPolicyError(error)) {
+              setIsRlsBlocked(true);
+              return {
+                success: false,
+                error: 'new row violates row-level security policy for table "apps"',
+                isRlsError: true,
+              };
+            }
+            return { success: false, error: error.message };
+          }
+          if (data?.id) newOrUpdatedApp.id = data.id;
         }
 
         // Handle screenshots if provided
-        if (newOrUpdatedApp.screenshots && newOrUpdatedApp.screenshots.length > 0) {
+        if (newOrUpdatedApp.screenshots && newOrUpdatedApp.screenshots.length > 0 && isUUID(newOrUpdatedApp.id)) {
           await client.from('app_screenshots').delete().eq('app_id', newOrUpdatedApp.id);
           const screenshotRecords = newOrUpdatedApp.screenshots.map((url, idx) => ({
             app_id: newOrUpdatedApp.id,
             image_url: url,
             display_order: idx,
           }));
-          await client.from('app_screenshots').insert(screenshotRecords);
+          const { error: screenshotErr } = await client.from('app_screenshots').insert(screenshotRecords);
+          if (screenshotErr && isRlsPolicyError(screenshotErr)) {
+            setIsRlsBlocked(true);
+            return {
+              success: false,
+              error: 'Screenshots could not be saved: violates row-level security policy for table "app_screenshots"',
+              isRlsError: true,
+            };
+          }
         }
       } catch (err: any) {
+        if (isRlsPolicyError(err)) {
+          setIsRlsBlocked(true);
+          return {
+            success: false,
+            error: 'new row violates row-level security policy for table "apps"',
+            isRlsError: true,
+          };
+        }
         return { success: false, error: err?.message || 'Database transaction error' };
       }
     }
 
     // Update local state
+    const oldId = appData.id;
     setApps(prev => {
       let nextList: AppItem[];
       if (isEditing) {
-        nextList = prev.map(a => (a.id === newOrUpdatedApp.id ? newOrUpdatedApp : a));
+        nextList = prev.map(a => (a.id === newOrUpdatedApp.id || (oldId && a.id === oldId) ? newOrUpdatedApp : a));
       } else {
-        nextList = [newOrUpdatedApp, ...prev];
+        nextList = [newOrUpdatedApp, ...prev.filter(a => a.id !== newOrUpdatedApp.id && (!oldId || a.id !== oldId))];
       }
       localStorage.setItem('gplay_local_apps', JSON.stringify(nextList));
       return nextList;
@@ -528,11 +734,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Delete App
   const deleteApp = async (appId: string): Promise<{ success: boolean; error?: string }> => {
     const client = getSupabase();
-    if (client) {
+    if (client && isUUID(appId)) {
       try {
         const { error } = await client.from('apps').delete().eq('id', appId);
-        if (error) return { success: false, error: error.message };
+        if (error) {
+          if (isRlsPolicyError(error)) {
+            setIsRlsBlocked(true);
+          }
+          return { success: false, error: error.message };
+        }
       } catch (err: any) {
+        if (isRlsPolicyError(err)) {
+          setIsRlsBlocked(true);
+        }
         return { success: false, error: err?.message || 'Failed to delete' };
       }
     }
@@ -552,8 +766,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newStatus = !target.is_published;
 
     const client = getSupabase();
-    if (client) {
-      await client.from('apps').update({ is_published: newStatus }).eq('id', appId);
+    if (client && isUUID(appId)) {
+      try {
+        await client.from('apps').update({ is_published: newStatus }).eq('id', appId);
+      } catch (e) {
+        console.error('Publish status update failed in Supabase', e);
+      }
     }
 
     setApps(prev =>
@@ -568,8 +786,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newStatus = !target.is_featured;
 
     const client = getSupabase();
-    if (client) {
-      await client.from('apps').update({ is_featured: newStatus }).eq('id', appId);
+    if (client && isUUID(appId)) {
+      try {
+        await client.from('apps').update({ is_featured: newStatus }).eq('id', appId);
+      } catch (e) {
+        console.error('Feature status update failed in Supabase', e);
+      }
     }
 
     setApps(prev =>
@@ -624,12 +846,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleTheme,
         isSupabaseConnected,
         checkSupabaseConnection,
+        isSchemaMissing,
+        isRlsBlocked,
+        setIsRlsBlocked,
+        schemaModalOpen,
+        setSchemaModalOpen,
+        schemaModalTab,
+        setSchemaModalTab,
+        openSchemaModal,
+        dismissSchemaBanner,
+        setDismissSchemaBanner,
         stats,
         isDownloading,
         downloadProgress,
         downloadError,
         downloadSuccessApp,
         setDownloadSuccessApp,
+        downloadActivePayload,
+        downloadedApps,
+        clearDownloadedApps,
         triggerAppDownload,
         submitReview,
         deleteReview,

@@ -10,16 +10,23 @@ import {
   Sparkles,
   Smartphone,
   ShieldCheck,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Copy,
+  Check,
+  ExternalLink,
+  Zap,
+  ShieldAlert
 } from 'lucide-react';
 import { AppItem, AppCategory } from '../../types';
 import { AVAILABLE_PERMISSIONS } from '../../lib/initialData';
 import { useAppStore } from '../../context/AppContext';
-import { uploadFileToStorage, BUCKET_APKS, BUCKET_ICONS, BUCKET_SCREENSHOTS } from '../../lib/supabase';
+import { uploadFileToStorage, BUCKET_APKS, BUCKET_ICONS, BUCKET_SCREENSHOTS, getSupabaseSqlEditorUrl } from '../../lib/supabase';
+import { SUPABASE_RLS_FIX_SQL } from '../../lib/sqlSchema';
 
 export const AdminAppForm: React.FC = () => {
-  const { editingApp, setEditingApp, setAdminTab, saveApp, isSupabaseConnected } = useAppStore();
+  const { editingApp, setEditingApp, setAdminTab, saveApp, isSupabaseConnected, openSchemaModal } = useAppStore();
   const isEditing = Boolean(editingApp);
+  const [copiedRls, setCopiedRls] = useState(false);
 
   // Form State
   const [name, setName] = useState(editingApp?.name || '');
@@ -234,10 +241,80 @@ export const AdminAppForm: React.FC = () => {
       </div>
 
       {formError && (
-        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-center gap-3 text-xs text-rose-700 dark:text-rose-300">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{formError}</span>
-        </div>
+        (() => {
+          const isRls = formError.toLowerCase().includes('row-level security') || 
+                        formError.toLowerCase().includes('rls') || 
+                        formError.toLowerCase().includes('policy');
+
+          if (isRls) {
+            return (
+              <div className="p-5 rounded-3xl bg-amber-50/95 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/80 shadow-md space-y-3.5 animate-in fade-in">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/15 dark:bg-amber-500/25 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-sm text-amber-950 dark:text-amber-100">
+                        PostgreSQL Row-Level Security (RLS) Policy Error
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                        table "apps"
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-900/90 dark:text-amber-200/90 mt-1 leading-relaxed">
+                      Supabase blocked writing to the database because the table's Row-Level Security policy restricts insert/update operations: <code className="font-mono font-semibold bg-amber-100 dark:bg-amber-900/60 px-1 py-0.5 rounded text-amber-950 dark:text-amber-100">{formError}</code>.
+                    </p>
+                    <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-1">
+                      You can resolve this immediately by running the 1-click RLS Quick Fix script in your Supabase SQL Editor.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 pt-1 pl-13">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(SUPABASE_RLS_FIX_SQL);
+                      setCopiedRls(true);
+                      setTimeout(() => setCopiedRls(false), 3000);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 active:scale-95 text-white transition-all shadow-sm"
+                  >
+                    {copiedRls ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedRls ? 'Fix SQL Copied to Clipboard!' : 'Copy Quick RLS Fix SQL'}</span>
+                  </button>
+
+                  <a
+                    href={getSupabaseSqlEditorUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors shadow-sm"
+                  >
+                    <ExternalLink className="w-4 h-4 text-emerald-500" />
+                    <span>Open Supabase SQL Editor</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => openSchemaModal('rls')}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-600" />
+                    <span>View SQL & Setup Guide</span>
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-center gap-3 text-xs text-rose-700 dark:text-rose-300">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{formError}</span>
+            </div>
+          );
+        })()
       )}
 
       {formSuccess && (
