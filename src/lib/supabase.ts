@@ -114,6 +114,10 @@ export const normalizeAnonKey = (rawKey: string): string => {
   return key;
 };
 
+// Permanent default Supabase project credentials for all browsers and devices
+export const DEFAULT_SUPABASE_PROJECT_URL = 'https://ketlcbiysigkeakyaqge.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtldGxjYml5c2lna2Vha3lhcWdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3ODM3ODksImV4cCI6MjEwNDM1OTc4OX0.1pfCo47fyaQr1bb3HdNNhM571vDBisGDHJ2XnOeyfzY';
+
 // Get configuration from env or local override with automatic normalization
 export const getSupabaseConfig = () => {
   const metaEnv = (import.meta as any).env || {};
@@ -123,24 +127,26 @@ export const getSupabaseConfig = () => {
   const storedUrl = typeof window !== 'undefined' ? localStorage.getItem('gplay_supabase_url') : null;
   const storedKey = typeof window !== 'undefined' ? localStorage.getItem('gplay_supabase_anon_key') : null;
 
-  const rawUrl = storedUrl || envUrl;
-  const rawKey = storedKey || envKey;
+  const rawUrl = storedUrl || envUrl || DEFAULT_SUPABASE_PROJECT_URL;
+  const rawKey = storedKey || envKey || DEFAULT_SUPABASE_ANON_KEY;
 
   const url = normalizeSupabaseUrl(rawUrl);
   const anonKey = normalizeAnonKey(rawKey);
 
-  // Auto-heal localStorage if the stored values were unnormalized
+  // Automatically save to localStorage so any browser session has it persisted permanently
   if (typeof window !== 'undefined') {
-    if (storedUrl && storedUrl !== url && url) {
-      try {
+    try {
+      if (!storedUrl && url) {
         localStorage.setItem('gplay_supabase_url', url);
-      } catch {}
-    }
-    if (storedKey && storedKey !== anonKey && anonKey) {
-      try {
+      } else if (storedUrl && storedUrl !== url && url) {
+        localStorage.setItem('gplay_supabase_url', url);
+      }
+      if (!storedKey && anonKey) {
         localStorage.setItem('gplay_supabase_anon_key', anonKey);
-      } catch {}
-    }
+      } else if (storedKey && storedKey !== anonKey && anonKey) {
+        localStorage.setItem('gplay_supabase_anon_key', anonKey);
+      }
+    } catch {}
   }
 
   const isConfigured = Boolean(

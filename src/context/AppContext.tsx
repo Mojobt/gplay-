@@ -272,7 +272,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ? item.app_screenshots.sort((a: any, b: any) => a.display_order - b.display_order).map((s: any) => s.image_url)
               : [],
           }));
-          setApps(mappedApps);
+
+          // Merge Supabase apps (which take precedence) with initial catalog apps
+          const mergedMap = new Map<string, AppItem>();
+          INITIAL_APPS.forEach(a => mergedMap.set(a.id, a));
+          mappedApps.forEach(a => mergedMap.set(a.id, a));
+          setApps(Array.from(mergedMap.values()));
           setIsLoadingApps(false);
           return;
         }
