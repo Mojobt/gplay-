@@ -121,6 +121,11 @@ export const AppCard: React.FC<AppCardProps> = ({ app, layout = 'grid' }) => {
               {app.developer_name}
             </p>
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {app.is_featured && (
+                <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 flex items-center gap-0.5">
+                  <Star className="w-2.5 h-2.5 fill-current" /> Featured
+                </span>
+              )}
               <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300">
                 {app.category}
               </span>

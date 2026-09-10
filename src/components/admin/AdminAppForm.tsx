@@ -15,7 +15,9 @@ import {
   Check,
   ExternalLink,
   Zap,
-  ShieldAlert
+  ShieldAlert,
+  Star,
+  Eye
 } from 'lucide-react';
 import { AppItem, AppCategory } from '../../types';
 import { AVAILABLE_PERMISSIONS } from '../../lib/initialData';
@@ -680,43 +682,140 @@ export const AdminAppForm: React.FC = () => {
               })}
             </div>
           </div>
+        </div>
 
-          <div className="pt-2 border-t border-zinc-100 dark:border-zinc-700/60 flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isPublished}
-                onChange={(e) => setIsPublished(e.target.checked)}
-                className="w-4 h-4 text-emerald-600 rounded"
-              />
-              <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                Publish to Public Store
-              </span>
-            </label>
+        {/* Storefront Visibility & Homepage Featured Placement */}
+        <div className="p-6 rounded-3xl bg-white dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <h4 className="font-bold text-sm text-zinc-900 dark:text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              Storefront Placement & Featured Spotlight
+            </h4>
+            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+              Control where and how this app appears on the home page
+            </span>
+          </div>
 
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isFeatured}
-                onChange={(e) => setIsFeatured(e.target.checked)}
-                className="w-4 h-4 text-amber-500 rounded"
-              />
-              <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                Feature on Homepage Banner
-              </span>
-            </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {/* Show on Homepage Featured Card */}
+            <div 
+              onClick={() => setIsFeatured(!isFeatured)}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-start justify-between gap-4 ${
+                isFeatured
+                  ? 'bg-amber-50/70 dark:bg-amber-950/25 border-amber-300 dark:border-amber-700/70 shadow-sm'
+                  : 'bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+              }`}
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Star className={`w-4 h-4 ${isFeatured ? 'text-amber-500 fill-amber-500' : 'text-zinc-400'}`} />
+                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                    Show on Homepage Featured Banner
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                    isFeatured 
+                      ? 'bg-amber-200/80 text-amber-900 dark:bg-amber-900/70 dark:text-amber-200' 
+                      : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'
+                  }`}>
+                    {isFeatured ? '⭐ Featured Active' : 'Not Featured'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Pin this app to the top hero carousel and prominent featured spotlight links on the store homepage.
+                </p>
+              </div>
 
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={loginRequired}
-                onChange={(e) => setLoginRequired(e.target.checked)}
-                className="w-4 h-4 text-emerald-600 rounded"
-              />
-              <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                Require Login for APK Download
-              </span>
-            </label>
+              {/* Toggle switch */}
+              <div 
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  isFeatured ? 'bg-amber-500' : 'bg-zinc-300 dark:bg-zinc-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isFeatured ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Publish to Public Store Card */}
+            <div 
+              onClick={() => setIsPublished(!isPublished)}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-start justify-between gap-4 ${
+                isPublished
+                  ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-300 dark:border-emerald-700/70 shadow-sm'
+                  : 'bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+              }`}
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Eye className={`w-4 h-4 ${isPublished ? 'text-emerald-500' : 'text-zinc-400'}`} />
+                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                    Public Store Visibility
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                    isPublished 
+                      ? 'bg-emerald-200/80 text-emerald-900 dark:bg-emerald-900/70 dark:text-emerald-200' 
+                      : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'
+                  }`}>
+                    {isPublished ? 'Published' : 'Draft'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Make this application visible in search, categories, and catalogs for all public store visitors.
+                </p>
+              </div>
+
+              {/* Toggle switch */}
+              <div 
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  isPublished ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isPublished ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Require Login */}
+            <div 
+              onClick={() => setLoginRequired(!loginRequired)}
+              className={`p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-start justify-between gap-4 md:col-span-2 ${
+                loginRequired
+                  ? 'bg-blue-50/70 dark:bg-blue-950/25 border-blue-300 dark:border-blue-700/70 shadow-sm'
+                  : 'bg-zinc-50 dark:bg-zinc-900/50 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+              }`}
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className={`w-4 h-4 ${loginRequired ? 'text-blue-500' : 'text-zinc-400'}`} />
+                  <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                    Require User Login for APK Download
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  When enabled, anonymous visitors must sign in before downloading the APK package.
+                </p>
+              </div>
+
+              <div 
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  loginRequired ? 'bg-blue-500' : 'bg-zinc-300 dark:bg-zinc-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    loginRequired ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </div>
+            </div>
+
           </div>
         </div>
 

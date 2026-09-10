@@ -9,20 +9,24 @@ interface FeaturedCarouselProps {
 
 export const FeaturedCarousel: React.FC<FeaturedCarouselProps> = ({ apps }) => {
   const { navigateToApp, triggerAppDownload } = useAppStore();
-  const featuredApps = apps.filter(a => a.is_featured).slice(0, 5);
+  const featuredApps = apps.filter(a => a.is_featured);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Fallback if no apps are marked featured
-  const activeList = featuredApps.length > 0 ? featuredApps : apps.slice(0, 3);
-  const currentApp = activeList[currentIndex] || activeList[0];
-
   useEffect(() => {
-    if (activeList.length <= 1) return;
+    if (featuredApps.length <= 1) return;
     const timer = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % activeList.length);
+      setCurrentIndex((prev) => (prev + 1) % featuredApps.length);
     }, 6000);
     return () => clearInterval(timer);
-  }, [activeList.length]);
+  }, [featuredApps.length]);
+
+  // If no apps are marked as featured, hide the carousel so admin has full control
+  if (featuredApps.length === 0) {
+    return null;
+  }
+
+  const safeIndex = currentIndex >= featuredApps.length ? 0 : currentIndex;
+  const currentApp = featuredApps[safeIndex];
 
   if (!currentApp) return null;
 
@@ -129,10 +133,10 @@ export const FeaturedCarousel: React.FC<FeaturedCarouselProps> = ({ apps }) => {
       </div>
 
       {/* Slide dots and controls */}
-      {activeList.length > 1 && (
+      {featuredApps.length > 1 && (
         <div className="relative z-10 px-6 sm:px-8 py-3 bg-zinc-950/60 border-t border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {activeList.map((app, idx) => (
+            {featuredApps.map((app, idx) => (
               <button
                 key={app.id}
                 onClick={() => setCurrentIndex(idx)}
@@ -146,14 +150,14 @@ export const FeaturedCarousel: React.FC<FeaturedCarouselProps> = ({ apps }) => {
 
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setCurrentIndex((prev) => (prev - 1 + activeList.length) % activeList.length)}
+              onClick={() => setCurrentIndex((prev) => (prev - 1 + featuredApps.length) % featuredApps.length)}
               className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
               aria-label="Previous featured app"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setCurrentIndex((prev) => (prev + 1) % activeList.length)}
+              onClick={() => setCurrentIndex((prev) => (prev + 1) % featuredApps.length)}
               className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
               aria-label="Next featured app"
             >

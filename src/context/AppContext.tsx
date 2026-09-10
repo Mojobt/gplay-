@@ -762,9 +762,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setApps(prev =>
-      prev.map(a => (a.id === appId ? { ...a, is_published: newStatus } : a))
-    );
+    setApps(prev => {
+      const nextList = prev.map(a => (a.id === appId ? { ...a, is_published: newStatus } : a));
+      try {
+        localStorage.setItem('gplay_local_apps', JSON.stringify(nextList));
+      } catch {}
+      return nextList;
+    });
   };
 
   // Toggle Featured
@@ -782,9 +786,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    setApps(prev =>
-      prev.map(a => (a.id === appId ? { ...a, is_featured: newStatus } : a))
-    );
+    setApps(prev => {
+      const nextList = prev.map(a => (a.id === appId ? { ...a, is_featured: newStatus } : a));
+      try {
+        localStorage.setItem('gplay_local_apps', JSON.stringify(nextList));
+      } catch {}
+      return nextList;
+    });
   };
 
   // Admin statistics calculated in real-time
